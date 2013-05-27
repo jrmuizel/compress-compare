@@ -1,0 +1,114 @@
+psnrhvs() {
+	local file=$1
+	local prefix=$2
+	~/src/daala/tools/png2y4m $file.png -o $file.y4m
+	~/src/daala/tools/dump_psnrhvs $file.y4m tmp/$orig.y4m
+	#echo $(stat -f %z $file), $(compare -metric psnr $file.png $orig.png tmp/diff.bmp 2>&1) >> $prefix-stats
+	echo $(stat -f %z $file), $(~/src/daala/tools/dump_psnrhvs $file.y4m tmp/$orig.y4m | tail -1 | cut -f2 -d\ ) >> $prefix-stats
+}
+orig=fire
+quality=$1
+~/src/daala/tools/png2y4m $orig.png -o tmp/$orig.y4m
+webp() {
+	local quality=$1
+	local file=tmp/$orig.$1.webp
+	~/src/libwebp/examples/cwebp -q $quality $orig.png -o $file 2> /dev/null
+	~/src/libwebp/examples/dwebp $file -o $file.png
+	psnrhvs $file webp
+}
+jpeg() {
+	local quality=$1
+	local file=tmp/$orig.$1.jpg
+	convert -quality $quality $orig.png $file
+	convert $file $file.png
+	#pngcrush -huffman -rem gAMA -rem sRGB $file.srgb.png $file.png
+	psnrhvs $file jpeg
+}
+cjpeg() {
+	local quality=$1
+	local file=tmp/$orig.$1.jpg
+	convert $orig.png /tmp/$orig.pnm
+	#~/tools/jpeg-aq/jpeg-6b/cjpeg -q $quality -optimize -threshold $2 -dct float /tmp/$orig.pnm > $file
+	~/tools/jpeg-aq/jpeg-6b/cjpeg -q $quality -optimize -dct float /tmp/$orig.pnm > $file
+	#convert -quality $quality $orig.png $file
+	convert $file $file.png
+	#pngcrush -huffman -rem gAMA -rem sRGB $file.srgb.png $file.png
+	#psnrhvs $file jpeg$2
+	psnrhvs $file jpeg$2
+}
+cjpega() {
+	local quality=$1
+	local file=tmp/$orig.$1.jpg
+	convert $orig.png /tmp/$orig.pnm
+	~/tools/jpeg-aq/jpeg-6b/cjpeg -q $quality -optimize -dct float /tmp/$orig.pnm > $file.huf.jpg
+	#convert -quality $quality $orig.png $file
+	convert $file.huf.jpg $file.png
+	jpegtran -arithmetic $file.huf.jpg > $file
+	#pngcrush -huffman -rem gAMA -rem sRGB $file.srgb.png $file.png
+	psnrhvs $file jpega
+}
+
+jxr() {
+	local quality=$(echo $1 / 100. | bc -l)
+	local file=tmp/$orig.$1.jxr
+	convert $orig.png tmp/$orig.bmp
+	echo $1 $quality
+	~/src/jxrlib/JxrEncApp -i tmp/$orig.bmp -o $file -q $quality
+	~/src/jxrlib/JxrDecApp -i $file -o $file.bmp
+	convert $file.bmp $file.png
+	#pngcrush -huffman -rem gAMA -rem sRGB $file.srgb.png $file.png
+	psnrhvs $file jxr
+}
+
+j2c() {
+	local quality=$(echo $1 / 30. | bc -l)
+	local file=tmp/$orig.$1.j2c
+	convert $orig.png tmp/$orig.bmp
+	echo $1 $quality
+	kdu_compress -i tmp/$orig.bmp -o $file -rate $quality
+	kdu_expand -i $file -o $file.bmp
+	convert $file.bmp $file.png
+	psnrhvs $file j2c
+}
+
+h264() {
+	local quality=$(echo \($1 - 4\) / 1.5 | bc -l)
+	local file=tmp/$orig.$1.h264
+	echo qual $quality
+	~/src/daala/tools/png2y4m $orig.png -o $file.y4m
+	~/src/x264/x264 --preset placebo --profile high --crf $quality --tune stillimage tmp/$orig.y4m -o $file
+	rm $file.y4m
+	ffmpeg -i $file $file.y4m
+	~/src/daala/tools/y4m2png $file.y4m -o $file.png
+	psnrhvs $file h264
+}
+
+
+
+mkdir -p tmp
+#webp $quality
+#jpeg $quality
+#jxr $quality
+#h264 42
+#jxr 0
+#exit
+size=`identify $orig.png | cut -f3 -d\  `
+width=`echo $size | cut -f1 -dx`
+height=`echo $size | cut -f2 -dx`
+pixels=$(expr $width '*' $height)
+echo $size $width $pixels
+for i in $(seq 5 19); do
+	#webp $(expr $i \* 5 - 1)
+	#jxr $(expr $i \* 5 - 1)
+	#jpeg $(expr $i \* 5 - 1)
+	cjpeg $(expr $i \* 5 - 1)
+	#cjpeg $(expr $i \* 5 - 1) 0
+	#cjpeg $(expr $i \* 5 - 1) 4
+	#cjpeg $(expr $i \* 5 - 1) 8
+	#cjpeg $(expr $i \* 5 - 1) 12
+	#cjpeg $(expr $i \* 5 - 1) 14
+	#cjpeg $(expr $i \* 5 - 1) 20
+	#cjpega $(expr $i \* 5 - 1)
+	#j2c $(expr $i \* 5 - 1)
+	#h264 $(expr $i \* 5 - 1)
+done
