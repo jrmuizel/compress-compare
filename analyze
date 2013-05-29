@@ -36,6 +36,19 @@ cjpeg() {
 	#psnrhvs $file jpeg$2
 	psnrhvs $file jpeg$2
 }
+cjpegaq() {
+	local quality=$1
+	local file=tmp/$orig.$1.jpg
+	convert $orig.png /tmp/$orig.pnm
+	#~/tools/jpeg-aq/jpeg-6b/cjpeg -q $quality -optimize -threshold $2 -dct float /tmp/$orig.pnm > $file
+	~/tools/jpeg-aq/jpeg-6b/cjpeg -q $quality -optimize -dct float /tmp/$orig.pnm > $file
+	#convert -quality $quality $orig.png $file
+	convert $file $file.png
+	#pngcrush -huffman -rem gAMA -rem sRGB $file.srgb.png $file.png
+	#psnrhvs $file jpeg$2
+	psnrhvs $file jpegaq$2
+}
+
 cjpega() {
 	local quality=$1
 	local file=tmp/$orig.$1.jpg
@@ -82,7 +95,24 @@ h264() {
 	~/src/daala/tools/y4m2png $file.y4m -o $file.png
 	psnrhvs $file h264
 }
+hevc() {
+	local quality=$(echo $1 / 2.0 | bc -l)
+	local file=tmp/$orig.$1.hevc
+	echo qual $quality
+	~/src/daala/tools/png2y4m $orig.png -o $file.y4m
+	ffmpeg -y -i $file.y4m $file.orig.yuv
+	~/src/jctvc-hm/bin/TAppEncoderStatic -c ~/src/jctvc-hm/cfg/encoder_randomaccess_main.cfg -wdt $width -hgt $height -aq 1 --SAOLcuBoundary 1 -q $quality -i $file.orig.yuv -fr 50 -f 500 -b $file -o $file.yuv
+	ffmpeg -y -s ${width}x${height} -i $file.yuv $file.y4m
+	~/src/daala/tools/y4m2png $file.y4m -o $file.png
+	psnrhvs $file hevc
+}
 
+name=`basename $1`
+~/src/daala/tools/png2y4m $1 -o /tmp/$name.y4m
+ffmpeg -y -i /tmp/$name.y4m /tmp/$name.yuv
+time ./TAppEncoderStatic -c ../cfg/encoder_randomaccess_main.cfg -wdt 1024 -hgt 752 -aq 1 --SAOLcuBoundary 1 -q 28.9 -i /tmp/$name.yuv -fr 50 -f 500 -b $name.hevc -o /tmp/$name.hevc.yuv
+ffmpeg -y -s 1024x752 -i /tmp/$name.hevc.yuv /tmp/$name.hevc.y4m
+~/src/daala/tools/y4m2png /tmp/$name.hevc.y4m -o $name.hevc.png
 
 
 mkdir -p tmp
@@ -97,11 +127,12 @@ width=`echo $size | cut -f1 -dx`
 height=`echo $size | cut -f2 -dx`
 pixels=$(expr $width '*' $height)
 echo $size $width $pixels
-for i in $(seq 5 19); do
+for i in $(seq 1 19); do
 	#webp $(expr $i \* 5 - 1)
 	#jxr $(expr $i \* 5 - 1)
 	#jpeg $(expr $i \* 5 - 1)
-	cjpeg $(expr $i \* 5 - 1)
+	#cjpeg $(expr $i \* 5 - 1)
+	#cjpegaq $(expr $i \* 5 - 1)
 	#cjpeg $(expr $i \* 5 - 1) 0
 	#cjpeg $(expr $i \* 5 - 1) 4
 	#cjpeg $(expr $i \* 5 - 1) 8
@@ -109,6 +140,7 @@ for i in $(seq 5 19); do
 	#cjpeg $(expr $i \* 5 - 1) 14
 	#cjpeg $(expr $i \* 5 - 1) 20
 	#cjpega $(expr $i \* 5 - 1)
-	#j2c $(expr $i \* 5 - 1)
-	#h264 $(expr $i \* 5 - 1)
+	j2c $(expr $i \* 5 - 1)
+	h264 $(expr $i \* 5 - 1)
+	#hevc $(expr $i \* 5 - 1)
 done
